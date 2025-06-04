@@ -328,9 +328,13 @@ class GenAI:
                 sleep(15) # Giảm thời gian chờ khi có lỗi
                 
 if __name__ == '__main__':
-    index_key=int(input('Nhập index key (int): '))
-    file_pdf_path=input('Nhập đường dẫn đến file tài liệu (nếu có): ')
-    file_sub_hypothesis_path=input('Nhập đường dẫn đến file sub hypothesis csv (nếu có):')
+    # Đọc các giá trị từ biến môi trường
+    index_key_str = os.getenv('INDEX_KEY', '0') # Mặc định là '0' nếu không có
+    index_key = int(index_key_str)
+
+    file_pdf_path = os.getenv('FILE_PDF_PATH', None) # Mặc định là None nếu không có
+    file_sub_hypothesis_path = os.getenv('FILE_SUB_HYPOTHESIS_PATH', 'WorldQuant-master/Finding Alpha - Sub Hypothesis.csv') # Mặc định là đường dẫn này
+
     wl=WorldQuant(credentials_path='WorldQuant-master/credential.json')
     while True:
         try:
