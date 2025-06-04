@@ -247,12 +247,12 @@ class GenAI:
 
                     #simulate alpha
                     if alpha_code != 'invalid':
-                        neutralizations = ["NONE", "MARKET", "SECTOR", "INDUSTRY", "SUBINDUSTRY"] # Đảm bảo đã cập nhật
-                        truncations = [1, 0.1, 0.01, 0.001] # Cập nhật
-                        decays = [0, 100, 200, 300, 400, 512] # Cập nhật
-                        pasteurizations = ["ON", "OFF"] # Thêm
-                        universes = ["TOP3000", "TOP1000", "TOP200", "TOPSP500"] # Thêm
-                        delays = [1] # Loại bỏ 0 vì không hợp lệ
+                        neutralizations = ["NONE", "INDUSTRY"] # Cập nhật theo yêu cầu
+                        truncations = [1, 0.01] # Cập nhật theo yêu cầu
+                        decays = [0, 512] # Cập nhật theo yêu cầu
+                        pasteurizations = ["ON"] # Cập nhật theo yêu cầu
+                        universes = ["TOP3000"] # Cập nhật theo yêu cầu
+                        delays = [1] # Giữ nguyên
                         
                         total_simulations = len(neutralizations) * len(truncations) * len(decays) * \
                                             len(pasteurizations) * len(universes) * len(delays)
@@ -271,9 +271,9 @@ class GenAI:
                                                     decay=decay, 
                                                     neut=neut, 
                                                     truncation=trunc,
-                                                    pasteurization=pasteur, # Truyền
-                                                    universe=uni, # Truyền
-                                                    delay=delay_val # Truyền
+                                                    pasteurization=pasteur,
+                                                    universe=uni,
+                                                    delay=delay_val
                                                 )
                                                 
                                                 # Xử lý trường hợp result_simulate không phải là list hợp lệ
