@@ -1,0 +1,22 @@
+From the given variable : {{ $json.id }} and its description : {{ $json.description }}, produce three specific, implementable alpha hypotheses (sub‑hypotheses). Each sub‑hypothesis must include:  
+ - A unique, concise name (e.g., “5‑Day Price Reversion”)  
+ - A one‑sentence description of the predictive rule  
+ - A simple mathematical expression or pseudo‑code snippet showing how to compute the signal 
+
+The model is encouraged to **leverage not only the provided variable**, but also its broader financial understanding of **price action (e.g., returns, volatility, moving averages)**, **volume dynamics (e.g., spikes, trends, OBV)**, and **fundamental indicators (e.g., earnings, P/E, book value)** where appropriate, in order to form richer and more predictive hypotheses. These auxiliary data can be used in combination with the main variable if relevant to enhance the predictive logic.
+
+Ensure that:  
+ - All three sub-hypotheses are novel and do not reuse names, descriptions, or logic from previous responses  
+ - Each idea is clearly actionable for implementation in quant trading  
+
+Output the result as a JSON array of objects, each with:  
+{[  
+  {  
+    "Variable": "<{{ $json.Variable }}>",  
+    "Sub_Hypothesis": "<Sub‑hypothesis Name>",  
+    "Description": "<One‑sentence predictive rule>",  
+    "Expression": "<Math formula or pseudo‑code>"  
+  },  
+  // … two more …  
+]}  
+Note: Only return the JSON, and don't mention the format name"

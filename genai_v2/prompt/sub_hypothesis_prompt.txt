@@ -1,0 +1,28 @@
+From the given list of variables: {{ $json.variables }} (each with an "id" and a "description"), produce three specific, implementable alpha hypotheses (sub-hypotheses) in total.
+
+Each sub‑hypothesis must include:
+ - A unique, concise name (e.g., “5‑Day Price Reversion”)
+ - A one‑sentence description of the predictive rule
+ - A simple mathematical expression or pseudo‑code snippet showing how to compute the signal
+
+You are encouraged to:
+ - Combine multiple variables from the list where appropriate
+ - Incorporate your broader financial understanding of **price action (e.g., returns, volatility, moving averages)**, **volume dynamics (e.g., spikes, trends, OBV)**, and **fundamental indicators (e.g., earnings, P/E, book value)** to enrich the hypothesis
+
+Ensure that:
+ - Only three hypotheses are generated in total
+ - Each hypothesis is novel, specific, and logically distinct from the others
+ - Each idea is clearly actionable and implementable in quantitative trading
+
+Output the result as a JSON array of objects, each with:
+{[
+  {
+    "Variables_Used": ["<id1>", "<id2>", ...],  
+    "Sub_Hypothesis": "<Sub-hypothesis Name>",  
+    "Description": "<One-sentence predictive rule>",  
+    "Expression": "<Math formula or pseudo-code>"
+  },
+  // … two more …
+]}
+
+Note: Only return the JSON, and do not include any explanatory text or formatting instructions.
