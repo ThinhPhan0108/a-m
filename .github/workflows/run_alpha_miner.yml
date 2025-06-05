@@ -45,5 +45,7 @@ jobs:
         INDEX_KEY: ${{ secrets.INDEX_KEY }}
         FILE_PDF_PATH: ${{ secrets.FILE_PDF_PATH }} # Có thể để trống nếu không có
         FILE_SUB_HYPOTHESIS_PATH: ${{ secrets.FILE_SUB_HYPOTHESIS_PATH }} # Ví dụ: Finding Alpha - Sub Hypothesis.csv
+        MAX_RUN_CYCLES: ${{ secrets.MAX_RUN_CYCLES }} # Số chu kỳ chạy tối đa (ví dụ: 0 để chạy vô hạn trong giới hạn 6h)
+        SLEEP_BETWEEN_CYCLES_SECONDS: ${{ secrets.SLEEP_BETWEEN_CYCLES_SECONDS }} # Thời gian chờ giữa các chu kỳ (giây)
       run: |
         python genai_v1/genai.py # Đường dẫn tương đối từ working-directory

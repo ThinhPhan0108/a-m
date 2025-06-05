@@ -53,7 +53,14 @@ class GenAI:
         # Đọc API keys từ biến môi trường
         google_api_keys_str = os.getenv('GOOGLE_API_KEYS')
         if google_api_keys_str:
-            self.list_key = json.loads(google_api_keys_str)
+            # Cố gắng tải JSON. Nếu là dictionary có 'list_key', lấy list_key. Nếu là list trực tiếp, dùng luôn.
+            loaded_data = json.loads(google_api_keys_str)
+            if isinstance(loaded_data, dict) and 'list_key' in loaded_data:
+                self.list_key = loaded_data['list_key']
+            elif isinstance(loaded_data, list):
+                self.list_key = loaded_data
+            else:
+                raise ValueError("Định dạng GOOGLE_API_KEYS không hợp lệ. Phải là mảng JSON hoặc đối tượng JSON với khóa 'list_key'.")
         else:
             # Fallback nếu không có biến môi trường (chỉ dùng cho dev cục bộ)
             data_key=self.read_json(os.path.join(parent_dir, 'keyapi.json'))
@@ -353,15 +360,34 @@ if __name__ == '__main__':
 
     wl=WorldQuant(credentials_path=os.path.join(parent_dir, 'credential.json'))
     
-    try:
-        print("\n" + "="*50)
-        print("BẮT ĐẦU CHU KỲ ĐÀO ALPHA MỚI")
-        print("="*50 + "\n")
-        GenAI(index_key).run(file_pdf_path,file_sub_hypothesis_path)
-        print("\n" + "="*50)
-        print("CHU KỲ ĐÀO ALPHA ĐÃ HOÀN TẤT")
-        print("="*50 + "\n")
-    except Exception as e:
-        print(f'\n❌ LỖI trong quá trình chạy dự án:')
-        traceback.print_exc() # Print full traceback
-        # sleep(10) # Removed sleep as we are not in a loop
+    # Đọc các giá trị cho vòng lặp từ biến môi trường
+    max_run_cycles_str = os.getenv('MAX_RUN_CYCLES', '1') # Mặc định 1 chu kỳ nếu không có
+    max_run_cycles = int(max_run_cycles_str) if max_run_cycles_str.isdigit() else 1
+
+    sleep_between_cycles_str = os.getenv('SLEEP_BETWEEN_CYCLES_SECONDS', '300') # Mặc định 300 giây (5 phút)
+    sleep_between_cycles = int(sleep_between_cycles_str) if sleep_between_cycles_str.isdigit() else 300
+
+    cycle_count = 0
+    while cycle_count < max_run_cycles:
+        try:
+            print("\n" + "="*50)
+            print(f"BẮT ĐẦU CHU KỲ ĐÀO ALPHA MỚI [{cycle_count + 1}/{max_run_cycles if max_run_cycles > 0 else 'VÔ HẠN'}]")
+            print("="*50 + "\n")
+            GenAI(index_key).run(file_pdf_path,file_sub_hypothesis_path)
+            print("\n" + "="*50)
+            print(f"CHU KỲ ĐÀO ALPHA ĐÃ HOÀN TẤT [{cycle_count + 1}/{max_run_cycles if max_run_cycles > 0 else 'VÔ HẠN'}]")
+            print("="*50 + "\n")
+            cycle_count += 1
+            if cycle_count < max_run_cycles:
+                print(f"Đang chờ {sleep_between_cycles} giây trước khi bắt đầu chu kỳ tiếp theo...")
+                sleep(sleep_between_cycles)
+        except Exception as e:
+            print(f'\n❌ LỖI trong quá trình chạy dự án ở chu kỳ {cycle_count + 1}:')
+            traceback.print_exc() # Print full traceback
+            print("Tiếp tục với chu kỳ tiếp theo sau khi gặp lỗi...")
+            cycle_count += 1 # Vẫn tăng số chu kỳ để tránh lặp vô hạn nếu lỗi liên tục
+            sleep(sleep_between_cycles) # Vẫn chờ trước khi thử lại
+    
+    print("\n" + "="*50)
+    print("TẤT CẢ CÁC CHU KỲ ĐÀO ALPHA ĐÃ HOÀN TẤT")
+    print("="*50 + "\n")
