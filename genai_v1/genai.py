@@ -315,24 +315,27 @@ class GenAI:
                 print(f'  ❌ LỖI trong quá trình tạo Sub Hypothesis/Alpha cho nhóm "{group_name}": {e}')
                 sleep(5) # Giảm thời gian chờ khi có lỗi
                 
+import traceback # Import traceback module
+
 if __name__ == '__main__':
     # Đọc các giá trị từ biến môi trường
     index_key_str = os.getenv('INDEX_KEY', '0') # Mặc định là '0' nếu không có
-    index_key = int(index_key_str)
+    index_key = int(index_key_str) if index_key_str else 0 # Xử lý trường hợp chuỗi rỗng
 
     file_pdf_path = os.getenv('FILE_PDF_PATH', None) # Mặc định là None nếu không có
     file_sub_hypothesis_path = os.getenv('FILE_SUB_HYPOTHESIS_PATH', os.path.join(parent_dir, 'Finding Alpha - Sub Hypothesis.csv')) # Mặc định là đường dẫn này
 
     wl=WorldQuant(credentials_path=os.path.join(parent_dir, 'credential.json'))
-    while True:
-        try:
-            print("\n" + "="*50)
-            print("BẮT ĐẦU CHU KỲ ĐÀO ALPHA MỚI")
-            print("="*50 + "\n")
-            GenAI(index_key).run(file_pdf_path,file_sub_hypothesis_path)
-            print("\n" + "="*50)
-            print("CHU KỲ ĐÀO ALPHA ĐÃ HOÀN TẤT")
-            print("="*50 + "\n")
-        except Exception as e:
-            print(f'\n❌ LỖI KHÁC trong quá trình chạy dự án: {e}')
-            sleep(10) # Giảm thời gian chờ khi có lỗi
+    
+    try:
+        print("\n" + "="*50)
+        print("BẮT ĐẦU CHU KỲ ĐÀO ALPHA MỚI")
+        print("="*50 + "\n")
+        GenAI(index_key).run(file_pdf_path,file_sub_hypothesis_path)
+        print("\n" + "="*50)
+        print("CHU KỲ ĐÀO ALPHA ĐÃ HOÀN TẤT")
+        print("="*50 + "\n")
+    except Exception as e:
+        print(f'\n❌ LỖI trong quá trình chạy dự án:')
+        traceback.print_exc() # Print full traceback
+        # sleep(10) # Removed sleep as we are not in a loop
