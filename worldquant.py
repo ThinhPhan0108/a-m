@@ -4,6 +4,7 @@ from requests.auth import HTTPBasicAuth
 from typing import List, Dict
 import pandas as pd
 from time import sleep
+import concurrent.futures # Import for parallel processing
 
 '''# Configure logger with more detailed format
 logging.basicConfig(
@@ -168,122 +169,127 @@ class WorldQuant:
             sim_data_list.append(simulation_data)
         return sim_data_list
     
-    def flow_simulate(self,simulation_progress_url_list,results,number_flow):
-        if len(simulation_progress_url_list)==number_flow:
-            i=0
-            while True:
-                #lấy kết quả từ url và chuyển kết quả thành json
-                simulation_progress=self.sess.get(simulation_progress_url_list[i])
-                result=simulation_progress.json()
-                #nếu kết quả ở trạng thái hoàn thành thì lưu kết quả và xóa url ra khỏi list, nếu không kiểm tra url tiếp theo trong list
-                if result.get("status")=='COMPLETE':
-                    results.append(result)
-                    simulation_progress_url_list.pop(i)
-                    print(f"Simulation complete: {result['regular']}")
-                    break
-                else:
-                    i = (i + 1) % number_flow
-                
-                sleep(5)
-            
-            return simulation_progress_url_list,results
-        else:
-            return simulation_progress_url_list,results
-    
-    #simulate alpha
-    def simulate(self, alpha_data: list,decay: int ,neut: str, region: str, universe: str, truncation: float, pasteurization: str, delay: int) -> dict: # Thêm pasteurization, delay
-        """Run a single alpha simulation."""
-        print(f"Starting single simulation for alpha")
+    #simulate alpha (parallelized)
+    def simulate(self, alpha_configs: List[Dict]) -> List[List]:
+        """
+        Runs multiple alpha simulations in parallel.
+        alpha_configs: A list of dictionaries, where each dictionary contains:
+            'alpha_expression': The alpha expression string.
+            'decay', 'neut', 'truncation', 'pasteurization', 'universe', 'delay': Simulation settings.
+            'region': Region for simulation (e.g., 'USA').
+        Returns a list of simulation results (metrics).
+        """
+        print(f"Starting parallel simulation for {len(alpha_configs)} alphas")
         
-        sim_data_list = self.generate_sim_data(alpha_data, decay ,region, universe, neut, truncation, pasteurization, delay) # Truyền pasteurization, delay
         results = []
-        simulation_progress_url_list=[]
-        for sim_data in sim_data_list:
+        
+        def _run_single_simulation(config):
+            alpha_expression = config['alpha_expression']
+            decay = config.get('decay', 0)
+            neut = config.get('neut', "MARKET")
+            region = config.get('region', 'USA')
+            universe = config.get('universe', 'TOP3000')
+            truncation = config.get('truncation', 0.08)
+            pasteurization = config.get('pasteurization', "ON")
+            delay = config.get('delay', 1)
+
+            sim_data_list = self.generate_sim_data([alpha_expression], decay, region, universe, neut, truncation, pasteurization, delay)
+            sim_data = sim_data_list[0] # Only one alpha per config
+
             try:
-                #gửi alpha lên worlquant để tiến hành simulation
-                simulation_response = self.sess.post('https://api.worldquantbrain.com/simulations', 
-                                                     json=sim_data)
+                simulation_response = self.sess.post('https://api.worldquantbrain.com/simulations', json=sim_data)
                 if simulation_response.status_code == 401:
-                    print("Session expired, re-authenticating...")
+                    print(f"Session expired for alpha {alpha_expression[:50]}..., re-authenticating...")
                     self.setup_auth(self.credentials_path)
-                    simulation_response = self.sess.post('https://api.worldquantbrain.com/simulations', 
-                                                        json=sim_data)
+                    simulation_response = self.sess.post('https://api.worldquantbrain.com/simulations', json=sim_data)
                 
                 if simulation_response.status_code != 201:
-                    print(f"Simulation API error: {simulation_response.text}")
-                    continue
-                #Lấy url chứa kết quả
-                simulation_progress_url=simulation_response.headers.get('Location')
+                    error_detail = simulation_response.json().get("detail", "")
+                    if "SIMULATION_LIMIT_EXCEEDED" in error_detail:
+                        print(f"Rate limit exceeded for alpha {alpha_expression[:50]}... Retrying after backoff.")
+                        sleep(10) # Initial backoff for rate limit
+                        # Re-attempt simulation after backoff
+                        return _run_single_simulation(config) 
+                    else:
+                        print(f"Simulation API error for alpha {alpha_expression[:50]}...: {simulation_response.text}")
+                        return [None] # Indicate failure
+                
+                simulation_progress_url = simulation_response.headers.get('Location')
                 if simulation_progress_url:
-                    simulation_progress_url_list.append(simulation_progress_url)
-                    simulation_progress_url_list,results=self.flow_simulate(simulation_progress_url_list,results,3)
-
-                else :
-                    print("No Location header in response")
-                    continue
-                
+                    retries = 0
+                    max_retries = 5
+                    while retries < max_retries:
+                        try:
+                            simulation_progress = self.sess.get(simulation_progress_url)
+                            simulation_progress.raise_for_status() # Raise HTTPError for bad responses (4xx or 5xx)
+                            simulation_progress = simulation_progress.json()
+                            
+                            if simulation_progress.get("detail") == "Incorrect authentication credentials.":
+                                print(f'Incorrect authentication credentials for alpha {alpha_expression[:50]}...')
+                                self.setup_auth(self.credentials_path)
+                                # Re-attempt simulation after re-auth
+                                return _run_single_simulation(config) 
+                            
+                            elif simulation_progress.get("status") in ['COMPLETE', 'WARNING']:
+                                alpha_id = simulation_progress.get("alpha")
+                                result = self.locate_alpha(alpha_id)
+                                print(f"Simulation complete for alpha {alpha_expression[:50]}...")
+                                return result
+                            
+                            elif simulation_progress.get("status") in ["FAILED", "ERROR"]:
+                                print(f'ERROR ALPHA {alpha_expression[:50]}...')
+                                return [None] # Indicate failure
+                            
+                            sleep(5) # Poll less frequently for individual simulations
+                        except requests.exceptions.HTTPError as http_err:
+                            if http_err.response.status_code == 429: # Too Many Requests
+                                print(f"Rate limit exceeded while polling for alpha {alpha_expression[:50]}... Retrying after backoff.")
+                                sleep_time = 2 ** retries # Exponential backoff
+                                sleep(sleep_time)
+                                retries += 1
+                            else:
+                                print(f"HTTP error while polling for alpha {alpha_expression[:50]}...: {http_err}")
+                                return [None]
+                        except requests.exceptions.RequestException as e:
+                            print(f"Network error while polling for alpha {alpha_expression[:50]}...: {str(e)}")
+                            return [None]
+                        except json.JSONDecodeError as e:
+                            print(f"JSON decode error while polling for alpha {alpha_expression[:50]}...: {str(e)}")
+                            return [None]
+                        except Exception as e:
+                            print(f"Unexpected error while polling for alpha {alpha_expression[:50]}...: {str(e)}")
+                            return [None]
+                    print(f"Max retries exceeded for alpha {alpha_expression[:50]}...")
+                    return [None] # Indicate failure after max retries
+                else:
+                    print(f"No Location header in response for alpha {alpha_expression[:50]}...")
+                    return [None] # Indicate failure
+            except requests.exceptions.RequestException as e:
+                print(f"Network error during simulation request for alpha {alpha_expression[:50]}...: {str(e)}")
+                return [None] # Indicate failure
+            except json.JSONDecodeError as e:
+                print(f"JSON decode error during simulation request for alpha {alpha_expression[:50]}...: {str(e)}")
+                return [None] # Indicate failure
             except Exception as e:
-                print(f"Error in simulation: {str(e)}")
-                sleep(60)  # Short sleep on error
-                self.setup_auth(self.credentials_path)
-                continue
-        #xử lý kết quả cuối cùng
-        simulation_progress_url_list,results=self.flow_simulate(simulation_progress_url_list,results,2)
-        simulation_progress_url_list,results=self.flow_simulate(simulation_progress_url_list,results,1)
-        return results
-    
-    #simulate alpha
-    def single_simulate(self, single_alpha: list,decay=0 ,neut="MARKET",region='USA',universe='TOP3000', truncation=0.08, pasteurization="ON", delay=1) -> dict: # Thêm pasteurization, delay
-        """Run a single alpha simulation."""
-        print(f"Starting single simulation for alpha")
-        
-        sim_data_list = self.generate_sim_data(single_alpha, decay ,region, universe, neut, truncation, pasteurization, delay) # Truyền pasteurization, delay
-        sim_data=sim_data_list[0]
-        try:
-            #gửi alpha lên worlquant để tiến hành simulation
-            simulation_response = self.sess.post('https://api.worldquantbrain.com/simulations', 
-                                                    json=sim_data)
-            if simulation_response.status_code == 401:
-                print("Session expired, re-authenticating...")
-                self.setup_auth(self.credentials_path)
-                simulation_response = self.sess.post('https://api.worldquantbrain.com/simulations', 
-                                                    json=sim_data)
+                print(f"Unexpected error during simulation request for alpha {alpha_expression[:50]}...: {str(e)}")
+                return [None] # Indicate failure
+
+        # Use ThreadPoolExecutor for parallel execution
+        # Max workers adjusted based on WorldQuant Brain API limit (3 concurrent simulations)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+            # Submit all simulation tasks
+            future_to_alpha = {executor.submit(_run_single_simulation, config): config for config in alpha_configs}
             
-            if simulation_response.status_code != 201:
-                print(f"Simulation API error: {simulation_response.text}")
-                
-            #Lấy url chứa kết quả
-            simulation_progress_url=simulation_response.headers.get('Location')
-            if simulation_progress_url:
-                print(simulation_progress_url)
-                while True: 
-                    simulation_progress=self.sess.get(simulation_progress_url)
-                    simulation_progress=simulation_progress.json()
-                    
-                    if simulation_progress.get("detail")=="Incorrect authentication credentials.":
-                        print('Incorrect authentication credentials.')
-                        self.setup_auth(self.credentials_path)
-                        result=self.single_simulate(single_alpha,decay ,neut, region, universe, truncation, pasteurization, delay) # Truyền pasteurization, delay
-                        return result
-                    
-                    elif simulation_progress.get("status") in ['COMPLETE','WARNING']:
-                        alpha_id=simulation_progress.get("alpha")
-                        result=self.locate_alpha(alpha_id)
-                        return result
-                    
-                    elif simulation_progress.get("status") in ["FAILED", "ERROR"]:
-                        print(f'ERROR ALPHA {single_alpha[0]}')
-                        return [None]
-                    
-                    sleep(10)
-            else :
-                print("No Location header in response")
-        except Exception as e:
-            print(f"Error in simulation: {str(e)}")
-            sleep(60)  # Short sleep on error
-            self.setup_auth(self.credentials_path)
-            result=self.single_simulate(single_alpha,decay ,neut, region, universe, truncation, pasteurization, delay) # Truyền pasteurization, delay
-            return result
+            for future in concurrent.futures.as_completed(future_to_alpha):
+                config = future_to_alpha[future]
+                try:
+                    sim_result = future.result()
+                    results.append(sim_result)
+                except Exception as exc:
+                    print(f'Alpha {config["alpha_expression"][:50]}... generated an exception: {exc}')
+                    results.append([None]) # Append None for failed alphas
+        
+        return results
     
     #hiệu quả alpha    
     def locate_alpha(self, alpha_id):
@@ -304,25 +310,3 @@ class WorldQuant:
         triple = [sharpe, turnover,fitness,returns,drawdown,margin,settings]
         triple = [ i if i != 'None' else None for i in triple]
         return triple
-    
-    def flow_simulate(self,simulation_progress_url_list,results,number_flow):
-        if len(simulation_progress_url_list)==number_flow:
-            i=0
-            while True:
-                #lấy kết quả từ url và chuyển kết quả thành json
-                simulation_progress=self.sess.get(simulation_progress_url_list[i])
-                result=simulation_progress.json()
-                #nếu kết quả ở trạng thái hoàn thành thì lưu kết quả và xóa url ra khỏi list, nếu không kiểm tra url tiếp theo trong list
-                if result.get("status")=='COMPLETE':
-                    results.append(result)
-                    simulation_progress_url_list.pop(i)
-                    print(f"Simulation complete: {result['regular']}")
-                    break
-                else:
-                    i = (i + 1) % number_flow
-                
-                sleep(5)
-            
-            return simulation_progress_url_list,results
-        else:
-            return simulation_progress_url_list,results
