@@ -21,6 +21,8 @@ from worldquant import WorldQuant
 import csv
 import itertools # Thêm import itertools để tạo hiệu ứng quay
 from genai_v1.google_sheets_manager import GoogleSheetsManager
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from google.api_core.exceptions import ResourceExhausted, ServiceUnavailable # Import các loại lỗi cụ thể
 
 # Removed print_spinner function as requested for cleaner output
 
@@ -55,9 +57,17 @@ class GenAI:
         else:
             # Fallback nếu không có biến môi trường (chỉ dùng cho dev cục bộ)
             data_key=self.read_json(os.path.join(parent_dir, 'keyapi.json'))
-            self.list_key=data_key['list_key']
+            self.list_key=data_key.get('list_key', []) # Sử dụng .get với giá trị mặc định là list rỗng
 
-        self.client=genai.Client(api_key=self.list_key[self.index_key]) # Sử dụng self.index_key
+        if not self.list_key:
+            raise ValueError("Không tìm thấy GOOGLE_API_KEYS. Vui lòng kiểm tra biến môi trường GOOGLE_API_KEYS hoặc file keyapi.json.")
+        
+        # Đảm bảo index_key nằm trong phạm vi hợp lệ
+        if not (0 <= self.index_key < len(self.list_key)):
+            print(f"Cảnh báo: index_key ({self.index_key}) nằm ngoài phạm vi hợp lệ của list_key (0-{len(self.list_key)-1}). Đặt lại index_key về 0.")
+            self.index_key = 0 # Đặt lại về 0 nếu không hợp lệ
+
+        self.client=genai.Client(api_key=self.list_key[self.index_key])
         self.model_name="gemini-2.0-flash"
 
         self.group_prompt=open(os.path.join(parent_dir, 'genai_v1', 'prompt', 'group_hypothesis_prompt.txt'), "r", encoding="utf-8").read()
@@ -102,6 +112,11 @@ class GenAI:
 
         return contents
 
+    @retry(
+        stop=stop_after_attempt(5), # Thử lại tối đa 5 lần
+        wait=wait_exponential(multiplier=1, min=4, max=10), # Thời gian chờ tăng theo cấp số nhân (4s, 8s, 16s, ...)
+        retry=retry_if_exception_type((ResourceExhausted, ServiceUnavailable)) # Chỉ thử lại khi gặp lỗi 429 (ResourceExhausted) hoặc 503 (ServiceUnavailable)
+    )
     def genai_group_hypothesis(self,file_path=None,df_sub_hypothesis=None):
         '''
         file_path: đường dẫn đến tài liệu để mô hình lấy group hypothesis
@@ -122,14 +137,20 @@ class GenAI:
         results=pd.DataFrame(results)
         return results
     
-    
+    @retry(
+        stop=stop_after_attempt(5), # Thử lại tối đa 5 lần
+        wait=wait_exponential(multiplier=1, min=4, max=10), # Thời gian chờ tăng theo cấp số nhân
+        retry=retry_if_exception_type((ResourceExhausted, ServiceUnavailable)) # Chỉ thử lại khi gặp lỗi 429 hoặc 503
+    )
     def genai_sub_hypothesis(self,group_hypothesis,file_path=None):
         '''
         group_hypothesis: là 1 hàng trong df kết quả của genai_group_pdf
         file_path: đường dẫn đến tài liệu muốn mô hình đọc để kiếm sub_hypothesis
         '''
         #tạo đối tượng model
-        client=genai.Client(api_key=self.list_key[self.index_key]) # Sửa lỗi IndexError
+        # Sử dụng cơ chế xoay vòng API key cho mỗi lần gọi genai_sub_hypothesis
+        self.index_key = (self.index_key + 1) % len(self.list_key)
+        client=genai.Client(api_key=self.list_key[self.index_key])
         contents=self.contents_prompt(file_path,group_hypothesis,self.sub_prompt)+[self.response_history]
         
         response = client.models.generate_content(
@@ -146,6 +167,11 @@ class GenAI:
         results=pd.DataFrame(results)
         return results
     
+    @retry(
+        stop=stop_after_attempt(5), # Thử lại tối đa 5 lần
+        wait=wait_exponential(multiplier=1, min=4, max=10), # Thời gian chờ tăng theo cấp số nhân
+        retry=retry_if_exception_type((ResourceExhausted, ServiceUnavailable)) # Chỉ thử lại khi gặp lỗi 429 hoặc 503
+    )
     def genai_alpha(self,sub_hypothesis):
         contents=self.contents_prompt(None,sub_hypothesis,self.alpha_prompt)
 

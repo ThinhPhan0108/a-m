@@ -20,7 +20,7 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
-        python-version: '3.10' # Đảm bảo phiên bản Python tương thích với requirements.txt
+        python-version: '3.11' # Cập nhật phiên bản Python để nhất quán
 
     - name: Install dependencies
       working-directory: WorldQuant-master # Đặt thư mục làm việc cho bước này
@@ -33,14 +33,15 @@ jobs:
       run: |
         echo '${{ secrets.WORLDQUANT_CREDENTIALS_JSON }}' > credential.json
         echo '${{ secrets.GOOGLE_API_KEYS_JSON }}' > keyapi.json
+        echo '${{ secrets.GOOGLE_SHEET_CREDENTIALS }}' > apisheet.json # Sử dụng đúng tên secret: GOOGLE_SHEET_CREDENTIALS
 
     - name: Run Alpha Miner Script
       working-directory: WorldQuant-master # Đặt thư mục làm việc cho script
       env:
-        GOOGLE_API_KEYS: ${{ secrets.GOOGLE_API_KEYS_JSON }} # Use the JSON secret for the env var
-        GOOGLE_SHEET_CREDENTIALS: ${{ secrets.GOOGLE_SHEET_CREDENTIALS }}
-        WORLDQUANT_USERNAME: ${{ secrets.WORLDQUANT_USERNAME }}
-        WORLDQUANT_PASSWORD: ${{ secrets.WORLDQUANT_PASSWORD }}
+        GOOGLE_API_KEYS: ${{ secrets.GOOGLE_API_KEYS_JSON }} # Sử dụng secret JSON cho biến môi trường
+        # GOOGLE_SHEET_CREDENTIALS: ${{ secrets.GOOGLE_SHEET_CREDENTIALS }} # Không cần thiết nếu apisheet.json được tạo
+        # WORLDQUANT_USERNAME: ${{ secrets.WORLDQUANT_USERNAME }} # Không cần thiết nếu credential.json được tạo
+        # WORLDQUANT_PASSWORD: ${{ secrets.WORLDQUANT_PASSWORD }} # Không cần thiết nếu credential.json được tạo
         INDEX_KEY: ${{ secrets.INDEX_KEY }}
         FILE_PDF_PATH: ${{ secrets.FILE_PDF_PATH }} # Có thể để trống nếu không có
         FILE_SUB_HYPOTHESIS_PATH: ${{ secrets.FILE_SUB_HYPOTHESIS_PATH }} # Ví dụ: Finding Alpha - Sub Hypothesis.csv
