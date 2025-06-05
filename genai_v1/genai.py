@@ -263,11 +263,11 @@ class GenAI:
                         continue # Bỏ qua alpha này và chuyển sang alpha tiếp theo
 
                     #simulate alpha
-                    neutralizations = ["NONE", "INDUSTRY"] # Cập nhật theo yêu cầu
-                    truncations = [1, 0.01] # Cập nhật theo yêu cầu
-                    decays = [0, 512] # Cập nhật theo yêu cầu
-                    pasteurizations = ["ON"] # Cập nhật theo yêu cầu
-                    universes = ["TOP3000"] # Cập nhật theo yêu cầu
+                    neutralizations = ["NONE", "INDUSTRY", "MARKET"] # Cập nhật theo yêu cầu
+                    truncations = [0.01] # Cập nhật theo yêu cầu
+                    decays = [0] # Cập nhật theo yêu cầu
+                    pasteurizations = ["ON"] # Giữ nguyên
+                    universes = ["TOP3000"] # Giữ nguyên
                     delays = [1] # Giữ nguyên
                     
                     alpha_configs_for_simulation = []
