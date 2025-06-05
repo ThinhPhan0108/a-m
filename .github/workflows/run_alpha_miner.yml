@@ -28,10 +28,16 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt # Đường dẫn tương đối từ working-directory
 
+    - name: Create sensitive files from secrets
+      working-directory: WorldQuant-master # Create files in the repository root
+      run: |
+        echo '${{ secrets.WORLDQUANT_CREDENTIALS_JSON }}' > credential.json
+        echo '${{ secrets.GOOGLE_API_KEYS_JSON }}' > keyapi.json
+
     - name: Run Alpha Miner Script
       working-directory: WorldQuant-master # Đặt thư mục làm việc cho script
       env:
-        GOOGLE_API_KEYS: ${{ secrets.GOOGLE_API_KEYS }}
+        GOOGLE_API_KEYS: ${{ secrets.GOOGLE_API_KEYS_JSON }} # Use the JSON secret for the env var
         GOOGLE_SHEET_CREDENTIALS: ${{ secrets.GOOGLE_SHEET_CREDENTIALS }}
         WORLDQUANT_USERNAME: ${{ secrets.WORLDQUANT_USERNAME }}
         WORLDQUANT_PASSWORD: ${{ secrets.WORLDQUANT_PASSWORD }}
