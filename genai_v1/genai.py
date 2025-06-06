@@ -295,12 +295,34 @@ class GenAI:
                                                 'region': 'USA' # Assuming USA as default region
                                             })
                     
-                    print(f"      ⏳ Bắt đầu mô phỏng song song {len(alpha_configs_for_simulation)} cấu hình cho Alpha này...")
-                    sim_results_list = wl.simulate(alpha_configs_for_simulation)
+                    print(f"      ⏳ Bắt đầu mô phỏng {len(alpha_configs_for_simulation)} cấu hình cho Alpha này (chia thành nhóm 3)...")
                     
+                    # Chia danh sách cấu hình thành các nhóm nhỏ (mỗi nhóm 3 cấu hình)
+                    chunk_size = 3
+                    chunks = [alpha_configs_for_simulation[x:x+chunk_size] for x in range(0, len(alpha_configs_for_simulation), chunk_size)]
+
                     alpha_simulation_failed = False
-                    for idx, sim_metrics in enumerate(sim_results_list):
-                        config = alpha_configs_for_simulation[idx]
+                    all_sim_results = [] # Để lưu trữ tất cả kết quả mô phỏng
+
+                    for chunk_idx, chunk in enumerate(chunks):
+                        print(f"      ➡️ Đang mô phỏng nhóm {chunk_idx + 1}/{len(chunks)} ({len(chunk)} cấu hình)...")
+                        try:
+                            sim_results_chunk = wl.simulate(chunk)
+                            all_sim_results.extend(sim_results_chunk) # Thêm kết quả của nhóm vào danh sách tổng
+                        except Exception as e:
+                            print(f"      ❌ LỖI khi mô phỏng nhóm {chunk_idx + 1}: {e}. Các cấu hình trong nhóm này sẽ được coi là thất bại.")
+                            # Thêm các giá trị None tương ứng với số lượng cấu hình trong chunk
+                            all_sim_results.extend([None] * len(chunk))
+                            alpha_simulation_failed = True # Đánh dấu alpha này là thất bại
+
+                        # Thêm độ trễ 3 giây giữa các nhóm, trừ nhóm cuối cùng
+                        if chunk_idx < len(chunks) - 1:
+                            print("      Đang chờ 3 giây trước khi mô phỏng nhóm tiếp theo...")
+                            sleep(3)
+                    
+                    # Xử lý tất cả kết quả mô phỏng sau khi tất cả các nhóm đã chạy
+                    for idx, sim_metrics in enumerate(all_sim_results):
+                        config = alpha_configs_for_simulation[idx] # Lấy cấu hình gốc
                         if not isinstance(sim_metrics, list) or sim_metrics == [None]:
                             print(f"      ❌ Mô phỏng thất bại cho cấu hình {config}. Bỏ qua.")
                             alpha_simulation_failed = True # Đánh dấu alpha này là thất bại
@@ -325,7 +347,6 @@ class GenAI:
                                 sim_metrics[6]      # Settings
                             ]
                             self.sheets_manager.append_rows([results])
-                            # Đã loại bỏ sleep(0.1) để ghi kết quả ngay lập tức
                     
                     if alpha_simulation_failed:
                         # Nếu bất kỳ cấu hình nào thất bại, ghi alpha là không thành công
@@ -343,7 +364,7 @@ class GenAI:
                         ]
                         self.sheets_manager.append_rows([results]) # Ghi alpha không thành công vào sheet
                         print(f"    ❌ Alpha [{j+1}/{total_sub_hypotheses}] mô phỏng thất bại hoàn toàn, đã lưu thông tin.")
-                    sleep(2) # Giảm thời gian chờ giữa các alpha
+                    sleep(2) # Giữ nguyên thời gian chờ giữa các alpha (sau khi tất cả các nhóm đã chạy)
             except Exception as e:
                 print(f'  ❌ LỖI trong quá trình tạo Sub Hypothesis/Alpha cho nhóm "{group_name}": {e}')
                 sleep(5) # Giảm thời gian chờ khi có lỗi
