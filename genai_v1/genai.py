@@ -272,7 +272,7 @@ class GenAI:
                     #simulate alpha
                     neutralizations = ["NONE", "INDUSTRY", "MARKET"] # Cập nhật theo yêu cầu
                     truncations = [0.01] # Cập nhật theo yêu cầu
-                    decays = [0] # Cập nhật theo yêu cầu
+                    decays = [0, 512] # Cập nhật theo yêu cầu
                     pasteurizations = ["ON"] # Giữ nguyên
                     universes = ["TOP3000"] # Giữ nguyên
                     delays = [1] # Giữ nguyên
