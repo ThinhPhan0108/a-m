@@ -1,3 +1,4 @@
+Group_Hypothesis,Sub_Hypothesis,Description,Expression
 Carry,Sentiment and Yield,High-yield stocks with positive sentiment will outperform those with negative sentiment.,Signal = (DividendYield) * SentimentScore
 Carry,Correlation and Yield,High-yield stocks with low correlation to the market outperform during market downturns.,Signal = Dividend Yield / (Correlation with Market Index)  // during market downturn periods
 Correlation Arbitrage: ETF vs. Underlying Basket,5-Day ETF Discount Reversion,ETFs trading at a discount to their net asset value (NAV) will revert to parity within 5 days.,Signal = (ETF_Price / NAV_Price) - 1;  Trade = 1 if Signal < -0.01 else 0
