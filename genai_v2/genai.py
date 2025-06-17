@@ -88,10 +88,6 @@ class GenAI:
         return contents
 
     def genai_sub_hypothesis(self, group_hypothesis, file_path=None):
-        """
-        group_hypothesis: một hàng trong df kết quả của genai_group_pdf
-        file_path: đường dẫn đến tài liệu muốn mô hình đọc để kiểm tra sub_hypothesis
-        """
         # Sử dụng cơ chế xoay vòng API key mỗi lần gọi
         self.index_key = (self.index_key + 1) % len(self.list_key)
         client = genai.Client(api_key=self.list_key[self.index_key])
@@ -129,9 +125,6 @@ class GenAI:
         return results
 
     def run(self, file_pdf_path=None, type_category='dataset'):
-        """
-        file_pdf_path: đường dẫn đến file tài liệu
-        """
         if file_pdf_path:
             file_name = os.path.basename(file_pdf_path)
         else:
@@ -159,9 +152,66 @@ class GenAI:
 
                     expression_alpha = list(auto_alpha['Expression_alpha'])
                     if expression_alpha[0] != 'invalid':
-                        result_simulate = wl.single_simulate(expression_alpha)
-                        results = [[self.date, self.process_name, file_name] + auto_alpha.values.tolist()[0] + result_simulate]
-                        self.append_rows(results)
+                        # Đa cấu hình simulate alpha
+                        neutralizations = ["NONE", "INDUSTRY", "MARKET"]
+                        truncations = [0.01]
+                        decays = [0, 512]
+                        pasteurizations = ["ON"]
+                        universes = ["TOP3000"]
+                        delays = [1]
+
+                        alpha_configs = []
+                        for neut in neutralizations:
+                            for trunc in truncations:
+                                for decay in decays:
+                                    for pasteur in pasteurizations:
+                                        for uni in universes:
+                                            for delay_val in delays:
+                                                alpha_configs.append({
+                                                    'alpha_expression': expression_alpha[0],
+                                                    'decay': decay,
+                                                    'neut': neut,
+                                                    'truncation': trunc,
+                                                    'pasteurization': pasteur,
+                                                    'universe': uni,
+                                                    'delay': delay_val,
+                                                    'region': 'USA'
+                                                })
+
+                        print(f"  Bắt đầu mô phỏng {len(alpha_configs)} cấu hình cho Alpha này (chia nhóm 3)...")
+                        chunk_size = 3
+                        chunks = [alpha_configs[x:x+chunk_size] for x in range(0, len(alpha_configs), chunk_size)]
+
+                        all_sim_results = []
+                        for chunk_idx, chunk in enumerate(chunks):
+                            print(f"   Mô phỏng nhóm {chunk_idx + 1}/{len(chunks)} ({len(chunk)} cấu hình)...")
+                            sim_results = wl.simulate(chunk)
+                            all_sim_results.extend(sim_results)
+                            if chunk_idx < len(chunks) - 1:
+                                print("   Đợi 3 giây trước khi chạy nhóm tiếp theo...")
+                                sleep(3)
+
+                        # Ghi kết quả từng cấu hình vào sheet
+                        for idx, sim_metrics in enumerate(all_sim_results):
+                            config = alpha_configs[idx]
+                            if not isinstance(sim_metrics, list) or sim_metrics == [None]:
+                                print(f"   ❌ Mô phỏng thất bại cho cấu hình: {config}")
+                                alpha_data_list = auto_alpha.values.tolist()[0]
+                                results = [
+                                    self.date, self.process_name, file_name,
+                                    alpha_data_list[0], alpha_data_list[1], alpha_data_list[2], alpha_data_list[3], alpha_data_list[4],
+                                    None, None, None, None, None, None, None
+                                ]
+                            else:
+                                print(f"   ✅ Mô phỏng thành công cho cấu hình: {config}")
+                                alpha_data_list = auto_alpha.values.tolist()[0]
+                                results = [
+                                    self.date, self.process_name, file_name,
+                                    alpha_data_list[0], alpha_data_list[1], alpha_data_list[2], alpha_data_list[3], alpha_data_list[4],
+                                    sim_metrics[0], sim_metrics[1], sim_metrics[2], sim_metrics[3], sim_metrics[4], sim_metrics[5], sim_metrics[6]
+                                ]
+                            self.append_rows([results])
+
                     else:
                         results = [[self.date, self.process_name, file_name] + auto_alpha.values.tolist()[0]]
                         self.append_rows(results)
