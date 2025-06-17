@@ -88,7 +88,6 @@ class GenAI:
         return contents
 
     def genai_sub_hypothesis(self, group_hypothesis, file_path=None):
-        # Sử dụng cơ chế xoay vòng API key mỗi lần gọi
         self.index_key = (self.index_key + 1) % len(self.list_key)
         client = genai.Client(api_key=self.list_key[self.index_key])
         
@@ -124,6 +123,22 @@ class GenAI:
         results = pd.DataFrame(results)
         return results
 
+    # Bổ sung hàm lấy score
+    def get_score(self, alpha_id):
+        return wl.get_score(alpha_id)  # gọi trực tiếp hàm trong WorldQuant
+    
+    # Bổ sung hàm lấy correlation
+    def get_corr(self, alpha_id):
+        return wl.get_corr(alpha_id)
+    
+    # Bổ sung hàm lấy pnl
+    def get_pl(self, alpha_id):
+        return wl.get_pl(alpha_id)
+    
+    # Bổ sung hàm lấy turnover
+    def get_turnover(self, alpha_id):
+        return wl.get_turnover(alpha_id)
+
     def run(self, file_pdf_path=None, type_category='dataset'):
         if file_pdf_path:
             file_name = os.path.basename(file_pdf_path)
@@ -152,7 +167,7 @@ class GenAI:
 
                     expression_alpha = list(auto_alpha['Expression_alpha'])
                     if expression_alpha[0] != 'invalid':
-                        # Đa cấu hình simulate alpha
+                        # Simulate alpha nhiều config
                         neutralizations = ["NONE", "INDUSTRY", "MARKET"]
                         truncations = [0.01]
                         decays = [0, 512]
@@ -191,7 +206,6 @@ class GenAI:
                                 print("   Đợi 3 giây trước khi chạy nhóm tiếp theo...")
                                 sleep(3)
 
-                        # Ghi kết quả từng cấu hình vào sheet
                         for idx, sim_metrics in enumerate(all_sim_results):
                             config = alpha_configs[idx]
                             if not isinstance(sim_metrics, list) or sim_metrics == [None]:
@@ -200,15 +214,44 @@ class GenAI:
                                 results = [
                                     self.date, self.process_name, file_name,
                                     alpha_data_list[0], alpha_data_list[1], alpha_data_list[2], alpha_data_list[3], alpha_data_list[4],
-                                    None, None, None, None, None, None, None
+                                    None, None, None, None, None, None, None,
+                                    None, None  # Thêm ô cho score và corr là None khi simulate lỗi
                                 ]
                             else:
                                 print(f"   ✅ Mô phỏng thành công cho cấu hình: {config}")
                                 alpha_data_list = auto_alpha.values.tolist()[0]
+
+                                # Lấy alpha_id từ settings string (cần parse hoặc lấy cách khác tùy response)
+                                # Giả sử settings cuối cùng trả về dạng dict hoặc string chứa alpha_id, cần parse chính xác
+                                alpha_id = None
+                                try:
+                                    settings = sim_metrics[6]
+                                    if isinstance(settings, str):
+                                        import re
+                                        match = re.search(r'alpha_id=([a-zA-Z0-9\-]+)', settings)
+                                        if match:
+                                            alpha_id = match.group(1)
+                                    elif isinstance(settings, dict):
+                                        alpha_id = settings.get('alpha_id')
+                                except Exception:
+                                    alpha_id = None
+
+                                score = None
+                                min_corr = None
+                                max_corr = None
+                                if alpha_id:
+                                    score_list = self.get_score(alpha_id)
+                                    if score_list:
+                                        score = score_list[0]
+                                    corr_list = self.get_corr(alpha_id)
+                                    if corr_list:
+                                        min_corr, max_corr = corr_list
+
                                 results = [
                                     self.date, self.process_name, file_name,
                                     alpha_data_list[0], alpha_data_list[1], alpha_data_list[2], alpha_data_list[3], alpha_data_list[4],
-                                    sim_metrics[0], sim_metrics[1], sim_metrics[2], sim_metrics[3], sim_metrics[4], sim_metrics[5], sim_metrics[6]
+                                    sim_metrics[0], sim_metrics[1], sim_metrics[2], sim_metrics[3], sim_metrics[4], sim_metrics[5], sim_metrics[6],
+                                    score, min_corr
                                 ]
                             self.append_rows([results])
 
@@ -220,19 +263,3 @@ class GenAI:
                 print(f'ERROR RUN {e}')
                 sleep(30)
 
-if __name__ == '__main__':
-    index_key = int(input('Nhập index key (int): '))
-
-    option = input('Nhập type_category (0: id | 1: dataset | 2: subcategory | 3: category) :')
-    category_json = {'0': 'id', '1': 'dataset', '2': 'subcategory', '3': 'category'}
-    type_category = category_json.get(option)
-
-    file_pdf_path = input('Nhập đường dẫn đến file tài liệu (nếu có): ')
-
-    wl = WorldQuant()
-    while True:
-        try:
-            GenAI(index_key).run(file_pdf_path, type_category)
-        except Exception as e:
-            print(f'ERROR OTHER {e}')
-            sleep(60)
