@@ -30,10 +30,8 @@ class genai_sub_format(BaseModel):
     Description: str
     Expression: str
 
-# Xác định thư mục cha (parent_dir) tương đối với file này
 parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 
-# Khởi tạo WorldQuant
 try:
     from worldquant import WorldQuant
     wl = WorldQuant(credentials_path=os.path.join(parent_dir, 'credential.json'))
@@ -46,7 +44,6 @@ class GenAI:
         self.date = datetime.datetime.now().strftime('%d-%m-%Y')
         self.process_name = 'version_2'
 
-        # Đọc keyapi.json an toàn
         try:
             data_key = self.read_json(os.path.join(parent_dir, 'keyapi.json'))
             self.list_key = data_key.get('list_key', [])
@@ -57,12 +54,8 @@ class GenAI:
             self.list_key = []
         
         self.index_key = index_key
-        if self.list_key:
-            self.client = genai.Client(api_key=self.list_key[self.index_key])
-        else:
-            self.client = None
+        self.client = genai.Client(api_key=self.list_key[self.index_key]) if self.list_key else None
 
-        # Đọc prompt file bằng parent_dir cho chắc
         try:
             self.sub_prompt = open(os.path.join(parent_dir, 'genai_v2', 'prompt', 'sub_hypothesis_prompt.txt'), "r", encoding="utf-8").read()
             self.alpha_prompt = open(os.path.join(parent_dir, 'genai_v1', 'prompt', 'alpha_prompt.txt'), "r", encoding="utf-8").read()
@@ -73,7 +66,6 @@ class GenAI:
             self.alpha_prompt = ""
             self.alpha_system = ""
 
-        # Kết nối Google Sheets an toàn
         try:
             gc = gspread.service_account(filename=os.path.join(parent_dir, 'apisheet.json'))
             wks = gc.open("Finding Alpha").worksheet("Auto_alpha_demo")
@@ -89,12 +81,10 @@ class GenAI:
 
     def read_json(self, file_path):
         with open(file_path, 'r', encoding='utf-8') as file:
-            data = json.load(file)
-        return data
+            return json.load(file)
     
     def append_rows(self, result_simulate):
         if not self.wks:
-            # Nếu không có kết nối Google Sheet, ghi file backup
             try:
                 with open(os.path.join(parent_dir, 'results.csv'), mode='a', newline='', encoding='utf-8') as file:
                     writer = csv.writer(file)
@@ -107,7 +97,6 @@ class GenAI:
                 self.wks.append_rows(result_simulate)
             except Exception as e:
                 print(f'Lỗi append_rows vào Google Sheets: {e}')
-                # Ghi backup
                 try:
                     with open(os.path.join(parent_dir, 'results.csv'), mode='a', newline='', encoding='utf-8') as file:
                         writer = csv.writer(file)
@@ -116,28 +105,18 @@ class GenAI:
                 except Exception as e2:
                     print(f'Lỗi ghi file backup results.csv: {e2}')
 
+    # Bỏ file_path khỏi contents_prompt: chỉ truyền DataFrame + prompt
     def contents_prompt(self, file_path, df, prompt):
-        obj_file = None
+        # file_path luôn None ở đây, bỏ luôn đọc file PDF
         text_json = None
-        if file_path:
-            try:
-                file = pathlib.Path(file_path)
-                obj_file = types.Part.from_bytes(data=file.read_bytes(), mime_type='application/pdf')
-            except Exception as e:
-                print(f"Lỗi đọc file pdf: {e}")
-                obj_file = None
         if df is not None:
             try:
                 text_json = df.to_json(orient="records", force_ascii=False, indent=2)
             except Exception as e:
                 print(f"Lỗi chuyển df thành json: {e}")
                 text_json = None
-        
-        if obj_file and text_json:
-            contents = [obj_file, text_json, prompt]
-        elif obj_file and not text_json:
-            contents = [obj_file, prompt]
-        elif not obj_file and text_json:
+
+        if text_json:
             contents = [text_json, prompt]
         else:
             contents = [prompt]
@@ -150,10 +129,10 @@ class GenAI:
         self.index_key = (self.index_key + 1) % len(self.list_key)
         client = genai.Client(api_key=self.list_key[self.index_key])
         
-        contents = self.contents_prompt(file_path, group_hypothesis, self.sub_prompt) + [self.response_history]
+        contents = self.contents_prompt(None, group_hypothesis, self.sub_prompt) + [self.response_history]
 
         response = client.models.generate_content(
-            model=self.name_model,
+            model=self.client.model_name if hasattr(self.client, 'model_name') else "gemini-2.0-flash",
             contents=contents,
             config={
                 "response_mime_type": "application/json",
@@ -163,8 +142,7 @@ class GenAI:
         )
 
         results = json.loads(response.text)
-        results = pd.DataFrame(results)
-        return results
+        return pd.DataFrame(results)
 
     def genai_alpha(self, sub_hypothesis):
         if not self.client:
@@ -172,7 +150,7 @@ class GenAI:
         contents = self.contents_prompt(None, sub_hypothesis, self.alpha_prompt)
 
         response = self.client.models.generate_content(
-            model=self.name_model,
+            model=self.client.model_name if hasattr(self.client, 'model_name') else "gemini-2.0-flash",
             contents=contents,
             config={
                 "response_mime_type": "application/json",
@@ -181,8 +159,7 @@ class GenAI:
             }
         )
         results = json.loads(response.text)
-        results = pd.DataFrame(results)
-        return results
+        return pd.DataFrame(results)
 
     def get_score(self, alpha_id):
         if not wl:
@@ -232,7 +209,7 @@ class GenAI:
         for i in list_category:
             try:
                 variable = datafields[datafields[type_category] == i]
-                df_sub_hypothesis = self.genai_sub_hypothesis(variable, file_pdf_path)
+                df_sub_hypothesis = self.genai_sub_hypothesis(variable, None)  # Không truyền file_pdf_path
 
                 for j in range(len(df_sub_hypothesis)):
                     sub_hypothesis = df_sub_hypothesis.loc[[j]]
@@ -341,12 +318,11 @@ class GenAI:
                 sleep(30)
 
 if __name__ == '__main__':
-    # Đọc các biến môi trường nếu có
     index_key_str = os.getenv('INDEX_KEY', '0')
     index_key = int(index_key_str) if index_key_str.isdigit() else 0
 
-    file_pdf_path = os.getenv('FILE_PDF_PATH', None)
-    file_sub_hypothesis_path = os.getenv('FILE_SUB_HYPOTHESIS_PATH', None)  # Không dùng trong code này
+    file_pdf_path = os.getenv('FILE_PDF_PATH', None)  # Không dùng trong code này, có thể truyền None
+    file_sub_hypothesis_path = os.getenv('FILE_SUB_HYPOTHESIS_PATH', None)  # Không dùng
 
     max_run_cycles_str = os.getenv('MAX_RUN_CYCLES', '1')
     max_run_cycles = int(max_run_cycles_str) if max_run_cycles_str.isdigit() else 1
@@ -360,7 +336,7 @@ if __name__ == '__main__':
             print("\n" + "="*50)
             print(f"BẮT ĐẦU CHU KỲ ĐÀO ALPHA MỚI [{cycle_count + 1}/{max_run_cycles}]")
             print("="*50 + "\n")
-            GenAI(index_key).run(file_pdf_path)
+            GenAI(index_key).run(None)  # Không truyền file_pdf_path
             print("\n" + "="*50)
             print(f"CHU KỲ ĐÀO ALPHA ĐÃ HOÀN TẤT [{cycle_count + 1}/{max_run_cycles}]")
             print("="*50 + "\n")
@@ -379,4 +355,3 @@ if __name__ == '__main__':
     print("\n" + "="*50)
     print("TẤT CẢ CÁC CHU KỲ ĐÀO ALPHA ĐÃ HOÀN TẤT")
     print("="*50 + "\n")
-
