@@ -48,4 +48,4 @@ jobs:
         MAX_RUN_CYCLES: ${{ secrets.MAX_RUN_CYCLES }} # Số chu kỳ chạy tối đa (ví dụ: 0 để chạy vô hạn trong giới hạn 6h)
         SLEEP_BETWEEN_CYCLES_SECONDS: ${{ secrets.SLEEP_BETWEEN_CYCLES_SECONDS }} # Thời gian chờ giữa các chu kỳ (giây)
       run: |
-        python genai_v1/genai.py # Đường dẫn tương đối từ working-directory
+        python genai_v2/genai.py # Đường dẫn tương đối từ working-directory
