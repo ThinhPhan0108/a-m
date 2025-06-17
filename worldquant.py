@@ -178,11 +178,11 @@ class WorldQuant:
         
         def _run_single_simulation(config):
             alpha_expression = config['alpha_expression']
-            decay = config.get('decay', 0)
-            neut = config.get('neut', "MARKET")
+            decay = config.get('decay', 0, 512)
+            neut = config.get('neut', "MARKET", "NONE", "INDUSTRY")
             region = config.get('region', 'USA')
             universe = config.get('universe', 'TOP3000')
-            truncation = config.get('truncation', 0.08)
+            truncation = config.get('truncation', 0.01)
             pasteurization = config.get('pasteurization', "ON")
             delay = config.get('delay', 1)
 
