@@ -4,7 +4,8 @@ from requests.auth import HTTPBasicAuth
 from typing import List, Dict
 import pandas as pd
 from time import sleep
-import concurrent.futures # Import for parallel processing
+import concurrent.futures
+import time  # cần để dùng trong get_score và get_corr
 
 '''# Configure logger with more detailed format
 logging.basicConfig(
@@ -145,7 +146,8 @@ class WorldQuant:
             lambda var: f"winsorize(ts_backfill(vec_avg({var}), 120), std=4)"
         )
         return df
-    def generate_sim_data(self, alpha_list, decay, region, uni, neut, truncation, pasteurization, delay): # Thêm pasteurization, delay
+
+    def generate_sim_data(self, alpha_list, decay, region, uni, neut, truncation, pasteurization, delay):
         sim_data_list = []
         for alpha in alpha_list:
             simulation_data = {
@@ -154,11 +156,11 @@ class WorldQuant:
                     'instrumentType': 'EQUITY',
                     'region': region,
                     'universe': uni,
-                    'delay': delay, # Sử dụng delay từ tham số
+                    'delay': delay,
                     'decay': decay,
                     'neutralization': neut,
                     'truncation': truncation,
-                    'pasteurization': pasteurization, # Sử dụng pasteurization từ tham số
+                    'pasteurization': pasteurization,
                     'unitHandling': 'VERIFY',
                     'nanHandling': 'OFF',
                     'language': 'FASTEXPR',
@@ -169,16 +171,7 @@ class WorldQuant:
             sim_data_list.append(simulation_data)
         return sim_data_list
     
-    #simulate alpha (parallelized)
     def simulate(self, alpha_configs: List[Dict]) -> List[List]:
-        """
-        Runs multiple alpha simulations in parallel.
-        alpha_configs: A list of dictionaries, where each dictionary contains:
-            'alpha_expression': The alpha expression string.
-            'decay', 'neut', 'truncation', 'pasteurization', 'universe', 'delay': Simulation settings.
-            'region': Region for simulation (e.g., 'USA').
-        Returns a list of simulation results (metrics).
-        """
         print(f"Starting parallel simulation for {len(alpha_configs)} alphas")
         
         results = []
@@ -194,7 +187,7 @@ class WorldQuant:
             delay = config.get('delay', 1)
 
             sim_data_list = self.generate_sim_data([alpha_expression], decay, region, universe, neut, truncation, pasteurization, delay)
-            sim_data = sim_data_list[0] # Only one alpha per config
+            sim_data = sim_data_list[0]
 
             try:
                 simulation_response = self.sess.post('https://api.worldquantbrain.com/simulations', json=sim_data)
@@ -207,12 +200,11 @@ class WorldQuant:
                     error_detail = simulation_response.json().get("detail", "")
                     if "SIMULATION_LIMIT_EXCEEDED" in error_detail:
                         print(f"Rate limit exceeded for alpha {alpha_expression[:50]}... Retrying after backoff.")
-                        sleep(10) # Initial backoff for rate limit
-                        # Re-attempt simulation after backoff
-                        return _run_single_simulation(config) 
+                        sleep(10)
+                        return _run_single_simulation(config)
                     else:
                         print(f"Simulation API error for alpha {alpha_expression[:50]}...: {simulation_response.text}")
-                        return [None] # Indicate failure
+                        return [None]
                 
                 simulation_progress_url = simulation_response.headers.get('Location')
                 if simulation_progress_url:
@@ -221,14 +213,13 @@ class WorldQuant:
                     while retries < max_retries:
                         try:
                             simulation_progress = self.sess.get(simulation_progress_url)
-                            simulation_progress.raise_for_status() # Raise HTTPError for bad responses (4xx or 5xx)
+                            simulation_progress.raise_for_status()
                             simulation_progress = simulation_progress.json()
                             
                             if simulation_progress.get("detail") == "Incorrect authentication credentials.":
                                 print(f'Incorrect authentication credentials for alpha {alpha_expression[:50]}...')
                                 self.setup_auth(self.credentials_path)
-                                # Re-attempt simulation after re-auth
-                                return _run_single_simulation(config) 
+                                return _run_single_simulation(config)
                             
                             elif simulation_progress.get("status") in ['COMPLETE', 'WARNING']:
                                 alpha_id = simulation_progress.get("alpha")
@@ -238,13 +229,13 @@ class WorldQuant:
                             
                             elif simulation_progress.get("status") in ["FAILED", "ERROR"]:
                                 print(f'ERROR ALPHA {alpha_expression[:50]}...')
-                                return [None] # Indicate failure
+                                return [None]
                             
-                            sleep(5) # Poll less frequently for individual simulations
+                            sleep(5)
                         except requests.exceptions.HTTPError as http_err:
-                            if http_err.response.status_code == 429: # Too Many Requests
+                            if http_err.response.status_code == 429:
                                 print(f"Rate limit exceeded while polling for alpha {alpha_expression[:50]}... Retrying after backoff.")
-                                sleep_time = 2 ** retries # Exponential backoff
+                                sleep_time = 2 ** retries
                                 sleep(sleep_time)
                                 retries += 1
                             else:
@@ -260,24 +251,21 @@ class WorldQuant:
                             print(f"Unexpected error while polling for alpha {alpha_expression[:50]}...: {str(e)}")
                             return [None]
                     print(f"Max retries exceeded for alpha {alpha_expression[:50]}...")
-                    return [None] # Indicate failure after max retries
+                    return [None]
                 else:
                     print(f"No Location header in response for alpha {alpha_expression[:50]}...")
-                    return [None] # Indicate failure
+                    return [None]
             except requests.exceptions.RequestException as e:
                 print(f"Network error during simulation request for alpha {alpha_expression[:50]}...: {str(e)}")
-                return [None] # Indicate failure
+                return [None]
             except json.JSONDecodeError as e:
                 print(f"JSON decode error during simulation request for alpha {alpha_expression[:50]}...: {str(e)}")
-                return [None] # Indicate failure
+                return [None]
             except Exception as e:
                 print(f"Unexpected error during simulation request for alpha {alpha_expression[:50]}...: {str(e)}")
-                return [None] # Indicate failure
+                return [None]
 
-        # Use ThreadPoolExecutor for parallel execution
-        # Max workers adjusted based on WorldQuant Brain API limit (3 concurrent simulations)
         with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
-            # Submit all simulation tasks
             future_to_alpha = {executor.submit(_run_single_simulation, config): config for config in alpha_configs}
             
             for future in concurrent.futures.as_completed(future_to_alpha):
@@ -287,18 +275,15 @@ class WorldQuant:
                     results.append(sim_result)
                 except Exception as exc:
                     print(f'Alpha {config["alpha_expression"][:50]}... generated an exception: {exc}')
-                    results.append([None]) # Append None for failed alphas
+                    results.append([None])
         
         return results
     
-    #hiệu quả alpha    
     def locate_alpha(self, alpha_id):
         alpha = self.sess.get("https://api.worldquantbrain.com/alphas/" + alpha_id)
         string = alpha.content.decode('utf-8')
         metrics = json.loads(string)
         
-        #regular=metrics["regular"]["code"]
-        #dateCreated = metrics["dateCreated"]
         sharpe = metrics["is"]["sharpe"]
         turnover = metrics["is"]["turnover"]
         fitness = metrics["is"]["fitness"]
@@ -310,3 +295,63 @@ class WorldQuant:
         triple = [sharpe, turnover,fitness,returns,drawdown,margin,settings]
         triple = [ i if i != 'None' else None for i in triple]
         return triple
+
+    def get_corr(self, alpha_id):
+        start_time = time.time()
+        timeout = 30
+
+        while True:
+            corr_respond = self.sess.get(f"https://api.worldquantbrain.com/alphas/{alpha_id}/correlations/self")
+            corr = corr_respond.content.decode('utf-8')
+            if corr:
+                corr = json.loads(corr)
+                if corr.get('min'):
+                    min_corr = corr['min']
+                    max_corr = corr['max']
+                    return [min_corr, max_corr]
+
+            if time.time() - start_time > timeout:
+                return [None, None]
+
+            sleep(5)
+
+    def get_score(self, alpha_id):
+        start_time = time.time()
+        timeout = 30
+
+        while True:
+            performance_response = self.sess.get(f'https://api.worldquantbrain.com/competitions/IQC2025S2/alphas/{alpha_id}/before-and-after-performance')
+            performance = performance_response.content.decode('utf-8')
+            if performance:
+                performance = json.loads(performance)
+                if performance.get('score'):
+                    before_score = performance['score']['before']
+                    after_score = performance['score']['after']
+                    score = after_score - before_score
+                    return [score]
+
+            if time.time() - start_time > timeout:
+                return [None]
+
+            sleep(5)
+
+    def get_pl(self, alpha_id):
+        while True:
+            pl_obj = self.sess.get(f'https://api.worldquantbrain.com/alphas/{alpha_id}/recordsets/pnl')
+            if pl_obj.content:
+                pl = pl_obj.json()
+                pl = pl.get('records')
+                pl_df = pd.DataFrame(pl, columns=['date', 'returns'])
+                pl_df['returns'] = pl_df['returns'] - pl_df['returns'].shift(1)
+                pl_df.dropna(inplace=True)
+                return pl_df
+
+    def get_turnover(self, alpha_id):
+        while True:
+            turnover_obj = self.sess.get(f'https://api.worldquantbrain.com/alphas/{alpha_id}/recordsets/turnover')
+            if turnover_obj.content:
+                turnover = turnover_obj.json()
+                turnover = turnover.get('records')
+                turnover_df = pd.DataFrame(turnover, columns=['date', 'turnover'])
+                turnover_df.dropna(inplace=True)
+                return turnover_df
