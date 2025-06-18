@@ -10,4 +10,4 @@ typing-extensions>=4.9.0
 scikit-learn
 tenacity==8.2.3
 google-api-core==2.11.0 
-worldquant-py
+wqb
