@@ -20,7 +20,7 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
-        python-version: '3.11' # Cập nhật phiên bản Python để nhất quán
+        python-version: '3.10' # Cập nhật phiên bản Python để nhất quán
 
     - name: Install dependencies
       working-directory: WorldQuant-master # Đặt thư mục làm việc cho bước này
